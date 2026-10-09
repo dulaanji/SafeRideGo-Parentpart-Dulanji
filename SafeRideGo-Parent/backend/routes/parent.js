@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { Parent, Child, Journey, PickupNote, Trip, Feedback, Alert, Session } = require('../models');
+const { Parent, Child, Journey, PickupNote, Trip, Feedback, Alert, Session,VanLocation } = require('../models');
 const { auth, h } = require('../middleware');
 
 router.use(auth);
@@ -104,6 +104,14 @@ router.post('/journey/reset', h(async (req, res) => {
   j.step = 0; j.delayMin = 0; j.status = 'live';
   await j.save();
   res.json(view(j));
+}));
+
+router.get('/van/location', h(async (req, res) => {
+  const j = await getJourney(req.parentId);
+  const v = await VanLocation.findOne({ vanNo: j.vanNo });
+  if (!v) return res.json({ live: false });
+  const ageSec = Math.round((Date.now() - v.at.getTime()) / 1000);
+  res.json({ live: ageSec < 60, lat: v.lat, lng: v.lng, ageSec });
 }));
 
 /* ---------------- PICKUP NOTES to driver (full CRUD) ---------------- */

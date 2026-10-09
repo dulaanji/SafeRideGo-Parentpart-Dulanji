@@ -1,27 +1,27 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, TouchableOpacity, Linking } from 'react-native';
-import Svg, { Path, Circle, Rect, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Screen, Btn, C } from '../ui';
 import { api } from '../api';
 import { notify } from '../dialog';
-
-// route drawn on the map + van position for each journey stage (0-4)
-const ROUTE = 'M60 420 C 110 340, 170 360, 190 270 S 270 130, 320 50';
-const POINTS = [[60, 420], [125, 352], [190, 270], [262, 160], [320, 50]];
-const BLOCKS = [[10, 20, 90, 70], [120, 10, 80, 90], [230, 120, 90, 80], [20, 130, 110, 70], [150, 200, 60, 60], [20, 270, 80, 90], [240, 280, 100, 70], [120, 380, 90, 60], [280, 380, 70, 50], [10, 380, 40, 60]];
+import VanMap from '../VanMap';
 
 export default function LiveMap({ navigation }) {
   const [j, setJ] = useState(null);
+  const [van, setVan] = useState(null);
   const [before, setBefore] = useState(5);
-  // READ: journey + the parent's alert threshold
+
+  // READ: journey + alert threshold (every 5s) and the real van GPS position (every 3s)
   useFocusEffect(useCallback(() => {
     const load = () => Promise.all([api.get('/journey/current'), api.get('/profile')])
       .then(([jr, pr]) => { setJ(jr); setBefore(pr.notifyBeforeMin); }).catch((e) => notify('Error', e.message));
+    const loadVan = () => api.get('/van/location').then(setVan).catch(() => {});
     load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    loadVan();
+    const t1 = setInterval(load, 5000);
+    const t2 = setInterval(loadVan, 3000);
+    return () => { clearInterval(t1); clearInterval(t2); };
   }, []));
 
   // UPDATE: choose how many minutes before arrival to be alerted
@@ -29,7 +29,7 @@ export default function LiveMap({ navigation }) {
     try { await api.put('/profile', { notifyBeforeMin: m }); setBefore(m); } catch (e) { notify('Error', e.message); }
   };
 
-  const van = j ? POINTS[j.step] : POINTS[0];
+  const live = !!(van && van.live);
   const next = j ? (j.stops.find((s) => s.status === 'current') || j.stops[4]).name.replace('Approaching ', '') : '';
   return (
     <Screen style={{ backgroundColor: C.navy }}>
@@ -39,25 +39,14 @@ export default function LiveMap({ navigation }) {
             <Ionicons name="chevron-back" size={18} color="#fff" />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={{ color: '#86EFAC', fontSize: 11 }}>● Live location</Text>
-            <Text style={{ color: '#9CA3AF', fontSize: 10 }}>Updated just now</Text>
+            <Text style={{ color: live ? '#86EFAC' : '#FCD34D', fontSize: 11 }}>{live ? '● Live location' : '● Waiting for van GPS'}</Text>
+            <Text style={{ color: '#9CA3AF', fontSize: 10 }}>{live ? 'Updated ' + van.ageSec + 's ago' : 'The driver has not started sharing yet'}</Text>
           </View>
           <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: '#2A3550', alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="locate-outline" size={18} color="#fff" />
           </View>
         </View>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Svg width="100%" height="100%" viewBox="0 0 360 460" preserveAspectRatio="xMidYMid slice">
-            {BLOCKS.map((b, i) => <Rect key={i} x={b[0]} y={b[1]} width={b[2]} height={b[3]} rx="6" fill="#222E4A" />)}
-            <Path d={ROUTE} stroke={C.amber} strokeWidth="5" fill="none" strokeLinecap="round" />
-            <Circle cx="320" cy="50" r="10" fill="#fff" />
-            <Circle cx="320" cy="50" r="6" fill={C.amber} />
-            <SvgText x="270" y="34" fill="#9CA3AF" fontSize="9">SCHOOL</SvgText>
-            <Circle cx={van[0]} cy={van[1]} r="14" fill="#fff" />
-            <Circle cx={van[0]} cy={van[1]} r="9" fill={C.green} />
-            <SvgText x={van[0] + 18} y={van[1] + 4} fill="#9CA3AF" fontSize="9">VAN</SvgText>
-          </Svg>
-        </View>
+        <VanMap lat={van && van.lat != null ? van.lat : null} lng={van && van.lng != null ? van.lng : null} live={live} />
       </View>
       <View style={{ backgroundColor: C.navy, padding: 18, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
         <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: '#374151', marginBottom: 12 }} />

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SafeRideGo - Driver</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; background: #141C2F; color: #fff; }
+  .bar { padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  input { padding: 8px; border-radius: 8px; border: 0; width: 150px; }
+  button { padding: 9px 14px; border-radius: 8px; border: 0; font-weight: 600; cursor: pointer; background: #F5A800; color: #141C2F; }
+  button.stop { background: #374151; color: #fff; }
+  #status { padding: 0 12px 8px; font-size: 13px; color: #9CA3AF; min-height: 18px; }
+  #map { height: calc(100vh - 130px); }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <input id="key" type="text" name="driver-key-field" autocomplete="off" placeholder="Driver key">
+    <input id="van" value="WP ND-4521" placeholder="Van number">
+    <button id="gps">Use my GPS</button>
+    <button id="demo">Demo drive</button>
+    <button id="stop" class="stop">Stop</button>
+  </div>
+  <div id="status">Enter the driver key, then tap a button or click on the map to place the van.</div>
+  <div id="map"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+  var SCHOOL = [6.9147, 79.9729];      // change to your school
+  var START  = [6.9060, 79.9480];      // demo drive start (straight line to school)
+  var map = L.map('map').setView(SCHOOL, 14);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+  L.circleMarker(SCHOOL, { radius: 8, color: '#F5A800', fillOpacity: 1 }).addTo(map).bindTooltip('School');
+  var van = L.circleMarker(START, { radius: 10, color: '#22C55E', fillOpacity: 1 }).addTo(map);
+
+  var timer = null, watchId = null;
+  var $ = function (id) { return document.getElementById(id); };
+  function say(t) { $('status').textContent = t; }
+
+  function send(lat, lng) {
+    van.setLatLng([lat, lng]);
+    if (!$('key').value.trim()) { stopAll(); return say('Type the driver key first'); }
+    fetch('/api/driver/location', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-driver-key': $('key').value },
+      body: JSON.stringify({ vanNo: $('van').value, lat: lat, lng: lng })
+    }).then(function (r) { return r.json().then(function (d) {
+      if (!r.ok && r.status === 401) stopAll();
+      say(r.ok ? 'Sent ' + lat.toFixed(5) + ', ' + lng.toFixed(5) + ' at ' + new Date().toLocaleTimeString() : 'Error: ' + d.message);
+    }); }).catch(function () { say('Cannot reach the server'); });
+  }
+
+  function stopAll() {
+    if (timer) clearInterval(timer);
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    timer = null; watchId = null;
+  }
+
+  map.on('click', function (e) { stopAll(); send(e.latlng.lat, e.latlng.lng); });
+
+  $('gps').onclick = function () {
+    stopAll();
+    if (!navigator.geolocation) return say('GPS not supported on this device');
+    watchId = navigator.geolocation.watchPosition(function (p) {
+      send(p.coords.latitude, p.coords.longitude);
+      map.panTo([p.coords.latitude, p.coords.longitude]);
+    }, function (e) { say('GPS error: ' + e.message + ' (phones need HTTPS for GPS)'); }, { enableHighAccuracy: true });
+  };
+
+  $('demo').onclick = function () {
+    stopAll();
+    var i = 0, steps = 80;
+    timer = setInterval(function () {
+      var t = Math.min(i / steps, 1);
+      send(START[0] + (SCHOOL[0] - START[0]) * t, START[1] + (SCHOOL[1] - START[1]) * t);
+      if (i++ >= steps) stopAll();
+    }, 1500);
+  };
+
+  $('stop').onclick = function () { stopAll(); say('Stopped'); };
+</script>
+</body>
+</html>

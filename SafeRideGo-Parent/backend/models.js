@@ -67,4 +67,11 @@ const Session = mongoose.model('Session', new Schema({
   device: { type: String, default: '' },
 }, { timestamps: true }));
 
-module.exports = { Session, Parent, Child, Journey, PickupNote, Trip, Feedback, Alert };
+const VanLocation = mongoose.model('VanLocation', new Schema({
+  vanNo: { type: String, required: true, unique: true },
+  lat: { type: Number, required: true },
+  lng: { type: Number, required: true },
+  at: { type: Date, default: Date.now },
+}));
+
+module.exports = { Session, Parent, Child, Journey, PickupNote, Trip, Feedback, Alert, VanLocation };
